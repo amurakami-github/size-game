@@ -8,14 +8,18 @@ const FRUITS = Object.freeze([
   { id: 'strawberry', name: 'いちご' },
   { id: 'grapes', name: 'ぶどう' },
 ]);
+const SUBJECTS = Object.freeze([
+  ...FRUITS.map(fruit => Object.freeze({ ...fruit, image: `./assets/fruits/${fruit.id}.png` })),
+  Object.freeze({ id: 'iroha', name: 'いろは', image: './assets/characters/iroha.png' }),
+]);
 const SIZE_LABELS = Object.freeze({ big: '大きい', small: '小さい' });
-const ITEMS = Object.freeze(FRUITS.flatMap(fruit => ['big', 'small'].map(size => Object.freeze({
-  id: `${fruit.id}-${size}`, fruit: fruit.id, name: fruit.name, size,
-  image: `./assets/fruits/${fruit.id}.png`,
-  audio: `./assets/audio/${fruit.id}-${size}.wav`,
-  questionAudio: `./assets/audio/question-${fruit.id}.wav`,
-  question: `けいじゅ、これは大きい${fruit.name}、小さい${fruit.name}、どっち？`,
-  feedback: `正解！ ${SIZE_LABELS[size]}${fruit.name}だよ。`,
+const ITEMS = Object.freeze(SUBJECTS.flatMap(subject => ['big', 'small'].map(size => Object.freeze({
+  id: `${subject.id}-${size}`, fruit: subject.id, name: subject.name, size,
+  image: subject.image,
+  audio: `./assets/audio/${subject.id}-${size}.wav`,
+  questionAudio: `./assets/audio/question-${subject.id}.wav`,
+  question: `けいじゅ、これは大きい${subject.name}、小さい${subject.name}、どっち？`,
+  feedback: `正解！ ${SIZE_LABELS[size]}${subject.name}だよ。`,
 }))));
 
 class Deck {
@@ -185,7 +189,7 @@ const mark = $('#result-mark');
 const answers = [...document.querySelectorAll('.answer')];
 const recovery = $('#audio-recovery');
 const game = new Game({ startId: new URLSearchParams(location.search).get('item') });
-const audio = new GameAudio({ assetVersion: '1.3.0' });
+const audio = new GameAudio({ assetVersion: '1.5.1' });
 let revision = 0;
 let timer;
 let imageReady = false;
@@ -216,7 +220,7 @@ function pressButton(button) {
 
 function resizeFruit() {
   const available = Math.max(0, Math.min(stage.clientWidth - 24, stage.clientHeight - 16));
-  // Linear 4:1 ratio, identical frame, identical fruit artwork.
+  // Linear 4:1 ratio, identical frame, identical artwork.
   const pixels = available * (game.current.size === 'big' ? .94 : .235);
   fruit.style.setProperty('--fruit-px', `${pixels}px`);
 }
@@ -235,7 +239,7 @@ function cancelPending() {
   questionNeedsTap = false;
   stage.removeAttribute('role');
   stage.removeAttribute('tabindex');
-  stage.setAttribute('aria-label', '果物の大きさを見て選ぶ問題');
+  stage.setAttribute('aria-label', '絵の大きさを見て選ぶ問題');
 }
 
 function showQuestion() {
@@ -305,7 +309,7 @@ async function playFeedback() {
     recovery.hidden = false;
     return;
   }
-  // Keep the fruit visible throughout the complete spoken feedback.
+  // Keep the picture visible throughout the complete spoken feedback.
   timer = setTimeout(() => {
     if (token === revision && !document.hidden) finishAnswer();
   }, lastFeedback.correct ? 1000 : 650);
@@ -415,7 +419,7 @@ window.addEventListener('pagehide', suspendPage);
 window.addEventListener('pageshow', resumePage);
 
 showQuestion();
-// Preload the other fruit images without delaying the first question.
+// Preload the other pictures without delaying the first question.
 for (const url of new Set(ITEMS.map(item => item.image))) {
   const preload = new Image();
   preload.src = url;
