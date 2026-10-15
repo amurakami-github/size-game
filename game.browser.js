@@ -186,6 +186,7 @@ const root = $('#game');
 const fruit = $('#fruit');
 const stage = $('#stage');
 const mark = $('#result-mark');
+const confetti = $('#confetti');
 const answers = [...document.querySelectorAll('.answer')];
 const recovery = $('#audio-recovery');
 const game = new Game({ startId: new URLSearchParams(location.search).get('item') });
@@ -235,6 +236,8 @@ function cancelPending() {
   revision++;
   clearTimeout(timer);
   audio.stop();
+  mark.hidden = true;
+  confetti.hidden = true;
   questionPlaying = false;
   questionNeedsTap = false;
   stage.removeAttribute('role');
@@ -292,6 +295,7 @@ async function playFeedback() {
   recovery.hidden = true;
   root.dataset.phase = 'answer';
   mark.hidden = true;
+  confetti.hidden = true;
   const result = await playAnswer(audio, lastFeedback, {
     isCurrent: () => token === revision && !document.hidden,
     onResult: () => {
@@ -299,10 +303,12 @@ async function playFeedback() {
       mark.textContent = lastFeedback.correct ? '○' : '×';
       mark.className = `result-mark ${lastFeedback.correct ? '' : 'wrong'}`;
       mark.hidden = false;
+      confetti.hidden = !lastFeedback.correct;
     },
   });
   if (token !== revision || document.hidden || result === 'cancelled') return;
   if (result !== 'ended') {
+    confetti.hidden = true;
     recovering = 'feedback';
     $('#continue').hidden = false;
     $('#continue').textContent = lastFeedback.correct ? 'つぎへ' : 'もういちど えらぶ';

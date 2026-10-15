@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="おおきい・ちいさい">
   <title>おおきい？ ちいさい？</title>
-  <link rel="stylesheet" href="./styles.css?v=1.5.1">
+  <link rel="stylesheet" href="./styles.css?v=1.6.0">
 </head>
 <body>
   <main class="game" id="game" data-phase="loading">
@@ -15,7 +15,6 @@
       <img id="fruit" class="fruit" alt="" draggable="false" hidden>
       <div id="loading" class="loading">じゅんび ちゅう…</div>
       <div id="image-error" class="image-error" hidden><p>えを よみこめませんでした</p><button id="retry-image" type="button">もういちど</button></div>
-      <div id="result-mark" class="result-mark" aria-hidden="true" hidden></div>
       <div id="audio-recovery" class="audio-recovery" hidden><span>おとが でませんでした</span><button id="retry-audio" type="button">もういちど きく</button><button id="continue" type="button">すすむ</button></div>
     </section>
     <div class="answers" aria-label="大きいか小さいかを選ぶ">
@@ -29,7 +28,52 @@
       </button>
     </div>
   </main>
+  <div id="confetti" class="confetti" aria-hidden="true" hidden>
+    <span class="confetti-piece" style="--x:1.50%;--delay:0ms;--duration:2900ms;--drift:-70px;--spin:400deg;--color:#e1ad3a"></span>
+    <span class="confetti-piece" style="--x:40.76%;--delay:137ms;--duration:3093ms;--drift:-33px;--spin:-483deg;--color:#65a67c"></span>
+    <span class="confetti-piece" style="--x:80.02%;--delay:274ms;--duration:3286ms;--drift:4px;--spin:566deg;--color:#df8d93"></span>
+    <span class="confetti-piece" style="--x:22.29%;--delay:411ms;--duration:3479ms;--drift:41px;--spin:-649deg;--color:#7bafd3"></span>
+    <span class="confetti-piece" style="--x:61.55%;--delay:548ms;--duration:3672ms;--drift:-63px;--spin:732deg;--color:#ad95ce"></span>
+    <span class="confetti-piece" style="--x:3.81%;--delay:685ms;--duration:3865ms;--drift:-26px;--spin:-815deg;--color:#e6a36f"></span>
+    <span class="confetti-piece" style="--x:43.07%;--delay:122ms;--duration:4058ms;--drift:11px;--spin:898deg;--color:#e1ad3a"></span>
+    <span class="confetti-piece" style="--x:82.33%;--delay:259ms;--duration:3051ms;--drift:48px;--spin:-981deg;--color:#65a67c"></span>
+    <span class="confetti-piece" style="--x:24.60%;--delay:396ms;--duration:3244ms;--drift:-56px;--spin:1064deg;--color:#df8d93"></span>
+    <span class="confetti-piece" style="--x:63.86%;--delay:533ms;--duration:3437ms;--drift:-19px;--spin:-447deg;--color:#7bafd3"></span>
+    <span class="confetti-piece" style="--x:6.12%;--delay:670ms;--duration:3630ms;--drift:18px;--spin:530deg;--color:#ad95ce"></span>
+    <span class="confetti-piece" style="--x:45.38%;--delay:107ms;--duration:3823ms;--drift:55px;--spin:-613deg;--color:#e6a36f"></span>
+    <span class="confetti-piece" style="--x:84.64%;--delay:244ms;--duration:4016ms;--drift:-49px;--spin:696deg;--color:#e1ad3a"></span>
+    <span class="confetti-piece" style="--x:26.90%;--delay:381ms;--duration:3009ms;--drift:-12px;--spin:-779deg;--color:#65a67c"></span>
+    <span class="confetti-piece" style="--x:66.17%;--delay:518ms;--duration:3202ms;--drift:25px;--spin:862deg;--color:#df8d93"></span>
+    <span class="confetti-piece" style="--x:8.43%;--delay:655ms;--duration:3395ms;--drift:62px;--spin:-945deg;--color:#7bafd3"></span>
+    <span class="confetti-piece" style="--x:47.69%;--delay:92ms;--duration:3588ms;--drift:-42px;--spin:1028deg;--color:#ad95ce"></span>
+    <span class="confetti-piece" style="--x:86.95%;--delay:229ms;--duration:3781ms;--drift:-5px;--spin:-411deg;--color:#e6a36f"></span>
+    <span class="confetti-piece" style="--x:29.21%;--delay:366ms;--duration:3974ms;--drift:32px;--spin:494deg;--color:#e1ad3a"></span>
+    <span class="confetti-piece" style="--x:68.48%;--delay:503ms;--duration:2967ms;--drift:69px;--spin:-577deg;--color:#65a67c"></span>
+    <span class="confetti-piece" style="--x:10.74%;--delay:640ms;--duration:3160ms;--drift:-35px;--spin:660deg;--color:#df8d93"></span>
+    <span class="confetti-piece" style="--x:50.00%;--delay:77ms;--duration:3353ms;--drift:2px;--spin:-743deg;--color:#7bafd3"></span>
+    <span class="confetti-piece" style="--x:89.26%;--delay:214ms;--duration:3546ms;--drift:39px;--spin:826deg;--color:#ad95ce"></span>
+    <span class="confetti-piece" style="--x:31.52%;--delay:351ms;--duration:3739ms;--drift:-65px;--spin:-909deg;--color:#e6a36f"></span>
+    <span class="confetti-piece" style="--x:70.79%;--delay:488ms;--duration:3932ms;--drift:-28px;--spin:992deg;--color:#e1ad3a"></span>
+    <span class="confetti-piece" style="--x:13.05%;--delay:625ms;--duration:2925ms;--drift:9px;--spin:-1075deg;--color:#65a67c"></span>
+    <span class="confetti-piece" style="--x:52.31%;--delay:62ms;--duration:3118ms;--drift:46px;--spin:458deg;--color:#df8d93"></span>
+    <span class="confetti-piece" style="--x:91.57%;--delay:199ms;--duration:3311ms;--drift:-58px;--spin:-541deg;--color:#7bafd3"></span>
+    <span class="confetti-piece" style="--x:33.83%;--delay:336ms;--duration:3504ms;--drift:-21px;--spin:624deg;--color:#ad95ce"></span>
+    <span class="confetti-piece" style="--x:73.10%;--delay:473ms;--duration:3697ms;--drift:16px;--spin:-707deg;--color:#e6a36f"></span>
+    <span class="confetti-piece" style="--x:15.36%;--delay:610ms;--duration:3890ms;--drift:53px;--spin:790deg;--color:#e1ad3a"></span>
+    <span class="confetti-piece" style="--x:54.62%;--delay:47ms;--duration:4083ms;--drift:-51px;--spin:-873deg;--color:#65a67c"></span>
+    <span class="confetti-piece" style="--x:93.88%;--delay:184ms;--duration:3076ms;--drift:-14px;--spin:956deg;--color:#df8d93"></span>
+    <span class="confetti-piece" style="--x:36.14%;--delay:321ms;--duration:3269ms;--drift:23px;--spin:-1039deg;--color:#7bafd3"></span>
+    <span class="confetti-piece" style="--x:75.40%;--delay:458ms;--duration:3462ms;--drift:60px;--spin:422deg;--color:#ad95ce"></span>
+    <span class="confetti-piece" style="--x:17.67%;--delay:595ms;--duration:3655ms;--drift:-44px;--spin:-505deg;--color:#e6a36f"></span>
+    <span class="confetti-piece" style="--x:56.93%;--delay:32ms;--duration:3848ms;--drift:-7px;--spin:588deg;--color:#e1ad3a"></span>
+    <span class="confetti-piece" style="--x:96.19%;--delay:169ms;--duration:4041ms;--drift:30px;--spin:-671deg;--color:#65a67c"></span>
+    <span class="confetti-piece" style="--x:38.45%;--delay:306ms;--duration:3034ms;--drift:67px;--spin:754deg;--color:#df8d93"></span>
+    <span class="confetti-piece" style="--x:77.71%;--delay:443ms;--duration:3227ms;--drift:-37px;--spin:-837deg;--color:#7bafd3"></span>
+    <span class="confetti-piece" style="--x:19.98%;--delay:580ms;--duration:3420ms;--drift:0px;--spin:920deg;--color:#ad95ce"></span>
+    <span class="confetti-piece" style="--x:59.24%;--delay:17ms;--duration:3613ms;--drift:37px;--spin:-1003deg;--color:#e6a36f"></span>
+  </div>
+  <div id="result-mark" class="result-mark" aria-hidden="true" hidden></div>
   <noscript>このゲームを使うには JavaScript を有効にしてください。</noscript>
-  <script defer src="./game.browser.js?v=1.5.1"></script>
+  <script defer src="./game.browser.js?v=1.6.0"></script>
 </body>
 </html>
