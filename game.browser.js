@@ -107,9 +107,19 @@ class GameAudio {
     this.timeoutMs = timeoutMs;
     this.assetVersion = assetVersion;
     this.pending = null;
+    this.preparedUrl = null;
+    this.lastFailure = null;
+  }
+  prepare(url) {
+    const source = this.assetVersion ? `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(this.assetVersion)}` : url;
+    if (this.preparedUrl === source && !this.element.error) return;
+    this.element.src = source;
+    this.preparedUrl = source;
+    this.element.load?.();
   }
   play(url) {
     this.stop();
+    this.lastFailure = null;
     const audio = this.element;
     return new Promise(resolve => {
       let settled = false;
@@ -125,18 +135,26 @@ class GameAudio {
         resolve(result);
       };
       const ended = () => finish('ended');
-      const failed = () => finish('failed');
+      const failed = error => {
+        if (settled) return;
+        const name = error?.name || 'MediaError';
+        const blocked = name === 'NotAllowedError';
+        this.lastFailure = { name, code: audio.error?.code ?? null };
+        // Reload a failed download on retry, but never poll a permission denial.
+        if (!blocked) this.preparedUrl = null;
+        finish(blocked ? 'blocked' : 'failed');
+      };
       this.pending = finish;
       audio.addEventListener('ended', ended);
       audio.addEventListener('error', failed);
-      timer = setTimeout(failed, this.timeoutMs);
+      timer = setTimeout(() => failed({ name: 'TimeoutError' }), this.timeoutMs);
       try {
         // Refresh replaced recordings without depending on browser cache expiry.
-        audio.src = this.assetVersion ? `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(this.assetVersion)}` : url;
-        audio.currentTime = 0;
+        this.prepare(url);
+        if (audio.currentTime > 0) audio.currentTime = 0;
         const playing = audio.play();
         if (playing?.catch) playing.catch(failed);
-      } catch { failed(); }
+      } catch (error) { failed(error); }
     });
   }
   stop() {
@@ -175,6 +193,26 @@ let lastFeedback = null;
 let recovering = 'question';
 let questionPlaying = false;
 let questionNeedsTap = false;
+let pageSuspended = document.hidden;
+const pressTimers = new Map();
+
+function releaseButtons() {
+  for (const [button, timeout] of pressTimers) {
+    clearTimeout(timeout);
+    button.classList.remove('pressed');
+  }
+  pressTimers.clear();
+}
+
+function pressButton(button) {
+  clearTimeout(pressTimers.get(button));
+  button.classList.toggle('pressed', true);
+  // Keep quick taps visible even after the answer disables the button.
+  pressTimers.set(button, setTimeout(() => {
+    button.classList.remove('pressed');
+    pressTimers.delete(button);
+  }, 160));
+}
 
 function resizeFruit() {
   const available = Math.max(0, Math.min(stage.clientWidth - 24, stage.clientHeight - 16));
@@ -202,10 +240,12 @@ function cancelPending() {
 
 function showQuestion() {
   cancelPending();
+  releaseButtons();
   const token = revision;
   imageReady = false;
   root.dataset.phase = 'loading';
   root.dataset.item = game.current.id;
+  root.dataset.questionAudio = 'loading';
   fruit.hidden = true;
   mark.hidden = true;
   recovery.hidden = true;
@@ -213,6 +253,9 @@ function showQuestion() {
   $('#image-error').hidden = true;
   answers.forEach(button => button.classList.remove('selected'));
   setButtons();
+  // Download the question alongside the picture, including on every reload.
+  // Preparing audio does not claim or bypass permission to play it.
+  try { audio.prepare(game.current.questionAudio); } catch { /* play() handles retry/errors */ }
   fruit.alt = `${game.current.name}の絵`;
   const loaded = () => {
     if (token !== revision || imageReady) return;
@@ -222,7 +265,7 @@ function showQuestion() {
     root.dataset.phase = 'question';
     resizeFruit();
     setButtons();
-    void playQuestion();
+    void playQuestion(undefined, true);
   };
   fruit.onload = loaded;
   fruit.onerror = () => {
@@ -285,18 +328,20 @@ function answer(size) {
   void playFeedback();
 }
 
-async function playQuestion(pendingSize) {
+async function playQuestion(pendingSize, retryTransientFailure = false) {
   if (game.phase === 'feedback' || questionPlaying || !imageReady || document.hidden) return;
   cancelPending();
   const token = revision;
   game.askQuestion();
   questionPlaying = true;
   root.dataset.phase = 'question';
+  root.dataset.questionAudio = 'starting';
   recovery.hidden = true;
   setButtons();
   const result = await audio.play(game.current.questionAudio);
   if (token !== revision || result === 'cancelled' || document.hidden) return;
   questionPlaying = false;
+  root.dataset.questionAudio = result;
   if (result !== 'ended') {
     recovering = 'question';
     questionNeedsTap = true;
@@ -306,6 +351,13 @@ async function playQuestion(pendingSize) {
     stage.setAttribute('tabindex', '0');
     stage.setAttribute('aria-label', '絵をタップして質問を聞く');
     setButtons();
+    // A first download can fail temporarily. Retry once; a permission denial
+    // requires a real tap and must never trigger a loop of play() calls.
+    if (result === 'failed' && retryTransientFailure) {
+      timer = setTimeout(() => {
+        if (token === revision && !document.hidden && questionNeedsTap) void playQuestion();
+      }, 500);
+    }
   } else {
     game.questionFinished();
     root.dataset.phase = 'ready';
@@ -314,7 +366,11 @@ async function playQuestion(pendingSize) {
   }
 }
 
-answers.forEach(button => button.addEventListener('click', () => answer(button.dataset.size)));
+answers.forEach(button => button.addEventListener('click', () => {
+  if (button.disabled) return;
+  pressButton(button);
+  answer(button.dataset.size);
+}));
 stage.addEventListener('click', () => { if (questionNeedsTap) void playQuestion(); });
 stage.addEventListener('keydown', event => {
   if (questionNeedsTap && (event.key === 'Enter' || event.key === ' ')) {
@@ -332,19 +388,31 @@ $('#continue').addEventListener('click', () => {
   if (recovering === 'feedback') finishAnswer();
   else recovery.hidden = true;
 });
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    cancelPending();
-    game.interrupt();
-    lastFeedback = null;
-    setButtons();
-  } else showQuestion();
-});
-window.addEventListener('pagehide', () => {
+function suspendPage() {
+  pageSuspended = true;
   cancelPending();
+  releaseButtons();
   game.interrupt();
+  lastFeedback = null;
+  setButtons();
+}
+
+function resumePage() {
+  if (document.hidden) return;
+  if (pageSuspended) {
+    pageSuspended = false;
+    showQuestion();
+  } else if (game.phase === 'question' && imageReady && !questionPlaying && !questionNeedsTap) {
+    void playQuestion(undefined, true);
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) suspendPage();
+  else resumePage();
 });
-window.addEventListener('pageshow', event => { if (event.persisted) showQuestion(); });
+window.addEventListener('pagehide', suspendPage);
+window.addEventListener('pageshow', resumePage);
 
 showQuestion();
 // Preload the other fruit images without delaying the first question.
