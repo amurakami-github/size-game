@@ -11,15 +11,17 @@ const FRUITS = Object.freeze([
 const SUBJECTS = Object.freeze([
   ...FRUITS.map(fruit => Object.freeze({ ...fruit, image: `./assets/fruits/${fruit.id}.png` })),
   Object.freeze({ id: 'iroha', name: 'いろは', image: './assets/characters/iroha.png' }),
+  Object.freeze({ id: 'spoon', name: 'スプーン', image: './assets/utensils/spoon.png' }),
+  Object.freeze({ id: 'fork', name: 'フォーク', image: './assets/utensils/fork.png' }),
+  Object.freeze({ id: 'ambulance', name: '救急車', image: './assets/vehicles/ambulance.png' }),
+  Object.freeze({ id: 'fire-engine', name: '消防車', image: './assets/vehicles/fire-engine.png' }),
 ]);
 const SIZE_LABELS = Object.freeze({ big: '大きい', small: '小さい' });
 const ITEMS = Object.freeze(SUBJECTS.flatMap(subject => ['big', 'small'].map(size => Object.freeze({
   id: `${subject.id}-${size}`, fruit: subject.id, name: subject.name, size,
   image: subject.image,
-  audio: `./assets/audio/${subject.id}-${size}.wav`,
-  questionAudio: `./assets/audio/question-${subject.id}.wav`,
-  question: `けいじゅ、これは大きい${subject.name}、小さい${subject.name}、どっち？`,
-  feedback: `正解！ ${SIZE_LABELS[size]}${subject.name}だよ。`,
+  questionAudio: `./assets/audio/prompts/${subject.id}-${size}.wav`,
+  question: `${SIZE_LABELS[size]}${subject.name}、どっち？`,
 }))));
 
 class Deck {
@@ -61,10 +63,15 @@ class Deck {
 
 class Game {
   constructor({ items = ITEMS, random = Math.random, startId } = {}) {
+    this.random = random;
     this.deck = new Deck(items, random);
     this.current = startId ? this.deck.startAt(startId) : this.deck.next();
+    this.choices = this.newChoices();
     this.phase = 'question';
     this.correct = null;
+  }
+  newChoices() {
+    return this.random() < .5 ? ['big', 'small'] : ['small', 'big'];
   }
   askQuestion() {
     if (this.phase === 'feedback') return false;
@@ -82,15 +89,16 @@ class Game {
     this.phase = 'feedback';
     return {
       correct: this.correct,
-      choiceText: `${SIZE_LABELS[size]}${this.current.name}`,
-      choiceAudio: `./assets/audio/choice-${this.current.fruit}-${size}.wav`,
-      audio: this.correct ? this.current.audio : './assets/audio/incorrect.wav',
-      text: this.correct ? this.current.feedback : 'はずれ！',
+      audio: this.correct ? './assets/audio/correct.wav' : './assets/audio/incorrect.wav',
+      text: this.correct ? '正解！' : 'はずれ！',
     };
   }
   finish() {
     if (this.phase !== 'feedback') return false;
-    if (this.correct) this.current = this.deck.next();
+    if (this.correct) {
+      this.current = this.deck.next();
+      this.choices = this.newChoices();
+    }
     this.phase = 'question';
     this.correct = null;
     return true;
@@ -121,12 +129,13 @@ class GameAudio {
     this.preparedUrl = source;
     this.element.load?.();
   }
-  play(url) {
+  play(url, { onStarted = () => {} } = {}) {
     this.stop();
     this.lastFailure = null;
     const audio = this.element;
     return new Promise(resolve => {
       let settled = false;
+      let startedOnce = false;
       let timer;
       const finish = result => {
         if (settled) return;
@@ -134,11 +143,17 @@ class GameAudio {
         clearTimeout(timer);
         audio.removeEventListener('ended', ended);
         audio.removeEventListener('error', failed);
+        audio.removeEventListener('playing', started);
         if (result !== 'ended') audio.pause();
         this.pending = null;
         resolve(result);
       };
       const ended = () => finish('ended');
+      const started = () => {
+        if (settled || startedOnce) return;
+        startedOnce = true;
+        onStarted();
+      };
       const failed = error => {
         if (settled) return;
         const name = error?.name || 'MediaError';
@@ -151,13 +166,14 @@ class GameAudio {
       this.pending = finish;
       audio.addEventListener('ended', ended);
       audio.addEventListener('error', failed);
+      audio.addEventListener('playing', started);
       timer = setTimeout(() => failed({ name: 'TimeoutError' }), this.timeoutMs);
       try {
         // Refresh replaced recordings without depending on browser cache expiry.
         this.prepare(url);
         if (audio.currentTime > 0) audio.currentTime = 0;
         const playing = audio.play();
-        if (playing?.catch) playing.catch(failed);
+        if (playing?.then) playing.then(started, failed);
       } catch (error) { failed(error); }
     });
   }
@@ -168,11 +184,9 @@ class GameAudio {
 }
 
 // answer-playback.js
-// Read the selected phrase completely before revealing or playing the result.
+// Reveal and play the judgment immediately inside the answer tap.
 async function playAnswer(audio, answer, { isCurrent = () => true, onResult = () => {} } = {}) {
-  const choice = await audio.play(answer.choiceAudio);
-  if (!isCurrent() || choice === 'cancelled') return 'cancelled';
-  if (choice !== 'ended') return choice;
+  if (!isCurrent()) return 'cancelled';
   onResult();
   if (!isCurrent()) return 'cancelled';
   const result = await audio.play(answer.audio);
@@ -183,21 +197,22 @@ async function playAnswer(audio, answer, { isCurrent = () => true, onResult = ()
 
 const $ = selector => document.querySelector(selector);
 const root = $('#game');
-const fruit = $('#fruit');
 const stage = $('#stage');
 const mark = $('#result-mark');
 const confetti = $('#confetti');
 const answers = [...document.querySelectorAll('.answer')];
+const pictures = answers.map(button => button.querySelector('.fruit'));
 const recovery = $('#audio-recovery');
+const startAudio = $('#start-audio');
 const game = new Game({ startId: new URLSearchParams(location.search).get('item') });
-const audio = new GameAudio({ assetVersion: '1.5.1' });
+const audio = new GameAudio({ assetVersion: '2.2.0' });
 let revision = 0;
 let timer;
 let imageReady = false;
 let lastFeedback = null;
 let recovering = 'question';
 let questionPlaying = false;
-let questionNeedsTap = false;
+let questionAvailable = false;
 let pageSuspended = document.hidden;
 const pressTimers = new Map();
 
@@ -212,23 +227,32 @@ function releaseButtons() {
 function pressButton(button) {
   clearTimeout(pressTimers.get(button));
   button.classList.toggle('pressed', true);
-  // Keep quick taps visible even after the answer disables the button.
   pressTimers.set(button, setTimeout(() => {
     button.classList.remove('pressed');
     pressTimers.delete(button);
   }, 160));
 }
 
-function resizeFruit() {
-  const available = Math.max(0, Math.min(stage.clientWidth - 24, stage.clientHeight - 16));
-  // Linear 4:1 ratio, identical frame, identical artwork.
-  const pixels = available * (game.current.size === 'big' ? .94 : .235);
-  fruit.style.setProperty('--fruit-px', `${pixels}px`);
+function resizePictures() {
+  // Use the same available space for both cards so only the artwork size differs.
+  const widthRatio = ['spoon', 'fork'].includes(game.current.fruit) ? .32 : 1;
+  const available = Math.max(0, Math.min(...answers.flatMap(button => [
+    (button.clientWidth - 24) / widthRatio, button.clientHeight - 24,
+  ])));
+  pictures.forEach((picture, index) => {
+    const pixels = available * (game.choices[index] === 'big' ? .88 : .22);
+    picture.style.setProperty('--fruit-px', `${pixels}px`);
+    picture.style.setProperty('--fruit-width-px', `${pixels * widthRatio}px`);
+    picture.style.setProperty('--fruit-fit', widthRatio < 1 ? 'cover' : 'contain');
+  });
 }
-new ResizeObserver(resizeFruit).observe(stage);
+const resizeObserver = new ResizeObserver(resizePictures);
+resizeObserver.observe(stage);
+answers.forEach(button => resizeObserver.observe(button));
 
 function setButtons() {
-  const enabled = (game.phase === 'question' || game.phase === 'ready') && imageReady && !document.hidden;
+  const enabled = (game.phase === 'question' || game.phase === 'ready') &&
+    imageReady && questionAvailable && !document.hidden;
   for (const button of answers) button.disabled = !enabled;
 }
 
@@ -238,50 +262,56 @@ function cancelPending() {
   audio.stop();
   mark.hidden = true;
   confetti.hidden = true;
+  startAudio.hidden = true;
   questionPlaying = false;
-  questionNeedsTap = false;
-  stage.removeAttribute('role');
-  stage.removeAttribute('tabindex');
-  stage.setAttribute('aria-label', '絵の大きさを見て選ぶ問題');
+  questionAvailable = false;
 }
 
 function showQuestion() {
   cancelPending();
   releaseButtons();
   const token = revision;
+  const loadedPictures = new Set();
   imageReady = false;
   root.dataset.phase = 'loading';
   root.dataset.item = game.current.id;
   root.dataset.questionAudio = 'loading';
-  fruit.hidden = true;
-  mark.hidden = true;
   recovery.hidden = true;
+  $('#continue').hidden = true;
   $('#loading').hidden = false;
   $('#image-error').hidden = true;
-  answers.forEach(button => button.classList.remove('selected'));
+  answers.forEach((button, index) => {
+    button.classList.remove('selected');
+    button.dataset.size = game.choices[index];
+    button.setAttribute('aria-label', `${SIZE_LABELS[game.choices[index]]}${game.current.name}`);
+    pictures[index].hidden = true;
+  });
   setButtons();
-  // Download the question alongside the picture, including on every reload.
-  // Preparing audio does not claim or bypass permission to play it.
   try { audio.prepare(game.current.questionAudio); } catch { /* play() handles retry/errors */ }
-  fruit.alt = `${game.current.name}の絵`;
-  const loaded = () => {
+  const loaded = index => {
     if (token !== revision || imageReady) return;
+    loadedPictures.add(index);
+    if (loadedPictures.size !== pictures.length) return;
     imageReady = true;
-    fruit.hidden = false;
+    pictures.forEach(picture => { picture.hidden = false; });
     $('#loading').hidden = true;
+    $('#image-error').hidden = true;
     root.dataset.phase = 'question';
-    resizeFruit();
-    setButtons();
+    resizePictures();
     void playQuestion(true);
   };
-  fruit.onload = loaded;
-  fruit.onerror = () => {
-    if (token !== revision) return;
-    $('#loading').hidden = true;
-    $('#image-error').hidden = false;
-  };
-  fruit.src = game.current.image;
-  if (fruit.complete && fruit.naturalWidth > 0) loaded();
+  pictures.forEach((picture, index) => {
+    picture.alt = '';
+    picture.setAttribute('aria-hidden', 'true');
+    picture.onload = () => loaded(index);
+    picture.onerror = () => {
+      if (token !== revision) return;
+      $('#loading').hidden = true;
+      $('#image-error').hidden = false;
+    };
+    picture.src = game.current.image;
+    if (picture.complete && picture.naturalWidth > 0) loaded(index);
+  });
 }
 
 function finishAnswer() {
@@ -293,7 +323,7 @@ function finishAnswer() {
 async function playFeedback() {
   const token = revision;
   recovery.hidden = true;
-  root.dataset.phase = 'answer';
+  startAudio.hidden = true;
   mark.hidden = true;
   confetti.hidden = true;
   const result = await playAnswer(audio, lastFeedback, {
@@ -315,23 +345,21 @@ async function playFeedback() {
     recovery.hidden = false;
     return;
   }
-  // Keep the picture visible throughout the complete spoken feedback.
   timer = setTimeout(() => {
     if (token === revision && !document.hidden) finishAnswer();
   }, lastFeedback.correct ? 1000 : 650);
 }
 
 function answer(size) {
-  if (!imageReady || document.hidden) return;
+  if (!imageReady || !questionAvailable || document.hidden) return;
   const result = game.answer(size);
   if (!result) return;
   if (questionPlaying) root.dataset.questionAudio = 'interrupted';
-  // Stop any question synchronously so the selected phrase starts in this tap.
+  // Stop the prompt synchronously; the judgment starts inside this same tap.
   cancelPending();
   lastFeedback = result;
   answers.forEach(button => button.classList.toggle('selected', button.dataset.size === size));
   setButtons();
-  // The selected phrase starts in the tap; the result follows its ended event.
   void playFeedback();
 }
 
@@ -341,31 +369,40 @@ async function playQuestion(retryTransientFailure = false) {
   const token = revision;
   game.askQuestion();
   questionPlaying = true;
+  questionAvailable = false;
   root.dataset.phase = 'question';
   root.dataset.questionAudio = 'starting';
   recovery.hidden = true;
+  $('#continue').hidden = true;
   setButtons();
-  const result = await audio.play(game.current.questionAudio);
+  const result = await audio.play(game.current.questionAudio, {
+    onStarted: () => {
+      if (token !== revision || document.hidden || !questionPlaying) return;
+      questionAvailable = true;
+      root.dataset.questionAudio = 'playing';
+      setButtons();
+    },
+  });
   if (token !== revision || result === 'cancelled' || document.hidden) return;
   questionPlaying = false;
   root.dataset.questionAudio = result;
   if (result !== 'ended') {
+    questionAvailable = false;
     recovering = 'question';
-    questionNeedsTap = true;
-    // The picture can retry a blocked question; answer buttons always start
-    // their selected phrase immediately, without waiting for question audio.
-    stage.setAttribute('role', 'button');
-    stage.setAttribute('tabindex', '0');
-    stage.setAttribute('aria-label', '絵をタップして質問を聞く');
     setButtons();
-    // A first download can fail temporarily. Retry once; a permission denial
-    // requires a real tap and must never trigger a loop of play() calls.
-    if (result === 'failed' && retryTransientFailure) {
+    if (result === 'blocked') {
+      // A separate start gesture unlocks the requested-size prompt; it is not an answer.
+      startAudio.hidden = false;
+    } else if (retryTransientFailure) {
       timer = setTimeout(() => {
-        if (token === revision && !document.hidden && questionNeedsTap) void playQuestion();
+        if (token === revision && !document.hidden && !questionAvailable) void playQuestion();
       }, 500);
+    } else {
+      // The target is only spoken. Never offer a way to skip an unheard prompt.
+      recovery.hidden = false;
     }
   } else {
+    questionAvailable = true;
     game.questionFinished();
     root.dataset.phase = 'ready';
     setButtons();
@@ -377,12 +414,8 @@ answers.forEach(button => button.addEventListener('click', () => {
   pressButton(button);
   answer(button.dataset.size);
 }));
-stage.addEventListener('click', () => { if (questionNeedsTap) void playQuestion(); });
-stage.addEventListener('keydown', event => {
-  if (questionNeedsTap && (event.key === 'Enter' || event.key === ' ')) {
-    event.preventDefault();
-    void playQuestion();
-  }
+startAudio.addEventListener('click', () => {
+  if (!startAudio.hidden) void playQuestion();
 });
 $('#retry-image').addEventListener('click', showQuestion);
 $('#retry-audio').addEventListener('click', () => {
@@ -390,14 +423,16 @@ $('#retry-audio').addEventListener('click', () => {
   else void playQuestion();
 });
 $('#continue').addEventListener('click', () => {
+  if (recovering !== 'feedback' || !lastFeedback) return;
   cancelPending();
-  if (recovering === 'feedback') finishAnswer();
-  else recovery.hidden = true;
+  finishAnswer();
 });
+
 function suspendPage() {
   pageSuspended = true;
   cancelPending();
   releaseButtons();
+  recovery.hidden = true;
   game.interrupt();
   lastFeedback = null;
   setButtons();
@@ -408,7 +443,8 @@ function resumePage() {
   if (pageSuspended) {
     pageSuspended = false;
     showQuestion();
-  } else if (game.phase === 'question' && imageReady && !questionPlaying && !questionNeedsTap) {
+  } else if (game.phase === 'question' && imageReady && !questionPlaying &&
+             root.dataset.questionAudio === 'loading') {
     void playQuestion(true);
   }
 }
@@ -421,7 +457,6 @@ window.addEventListener('pagehide', suspendPage);
 window.addEventListener('pageshow', resumePage);
 
 showQuestion();
-// Preload the other pictures without delaying the first question.
 for (const url of new Set(ITEMS.map(item => item.image))) {
   const preload = new Image();
   preload.src = url;

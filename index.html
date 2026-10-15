@@ -6,27 +6,27 @@
   <meta name="theme-color" content="#f7f5ef">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="おおきい・ちいさい">
-  <title>おおきい？ ちいさい？</title>
-  <link rel="stylesheet" href="./styles.css?v=1.7.0">
+  <title>おおきい・ちいさい どっち？</title>
+  <link rel="apple-touch-icon" href="./assets/icons/apple-touch-icon.png?v=2.2.0">
+  <link rel="icon" type="image/png" href="./assets/icons/apple-touch-icon.png?v=2.2.0">
+  <link rel="stylesheet" href="./styles.css?v=2.2.0">
 </head>
 <body>
   <main class="game" id="game" data-phase="loading">
-    <section id="stage" class="stage" aria-label="絵の大きさを見て選ぶ問題">
-      <img id="fruit" class="fruit" alt="" draggable="false" hidden>
+    <section id="stage" class="stage" aria-label="声で聞いた方の絵を選ぶ問題">
+      <button class="answer" id="left" data-side="left" type="button" disabled>
+        <img class="fruit" alt="" aria-hidden="true" draggable="false" hidden>
+      </button>
+      <button class="answer" id="right" data-side="right" type="button" disabled>
+        <img class="fruit" alt="" aria-hidden="true" draggable="false" hidden>
+      </button>
       <div id="loading" class="loading">じゅんび ちゅう…</div>
       <div id="image-error" class="image-error" hidden><p>えを よみこめませんでした</p><button id="retry-image" type="button">もういちど</button></div>
       <div id="audio-recovery" class="audio-recovery" hidden><span>おとが でませんでした</span><button id="retry-audio" type="button">もういちど きく</button><button id="continue" type="button">すすむ</button></div>
+      <button id="start-audio" class="start-audio" type="button" aria-label="ゲームの音声をはじめる" hidden>
+        <span class="play-disc" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M17 10 37 24 17 38Z"/></svg></span>
+      </button>
     </section>
-    <div class="answers" aria-label="大きいか小さいかを選ぶ">
-      <button class="answer" id="big" data-size="big" type="button" disabled>
-        <span class="size-cue-slot" aria-hidden="true"><span class="size-cue"></span></span>
-        <span class="answer-label">おおきい</span>
-      </button>
-      <button class="answer" id="small" data-size="small" type="button" disabled>
-        <span class="size-cue-slot" aria-hidden="true"><span class="size-cue size-cue-small"></span></span>
-        <span class="answer-label">ちいさい</span>
-      </button>
-    </div>
   </main>
   <div id="confetti" class="confetti" aria-hidden="true" hidden>
     <span class="confetti-piece" style="--x:1.50%;--delay:0ms;--duration:2900ms;--drift:-70px;--spin:400deg;--color:#e1ad3a"></span>
@@ -74,6 +74,6 @@
   </div>
   <div id="result-mark" class="result-mark" aria-hidden="true" hidden></div>
   <noscript>このゲームを使うには JavaScript を有効にしてください。</noscript>
-  <script defer src="./game.browser.js?v=1.7.0"></script>
+  <script defer src="./game.browser.js?v=2.2.0"></script>
 </body>
 </html>
