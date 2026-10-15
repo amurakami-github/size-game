@@ -77,7 +77,7 @@ class Game {
     return true;
   }
   answer(size) {
-    if (this.phase !== 'ready' || !Object.hasOwn(SIZE_LABELS, size)) return null;
+    if (!['question', 'ready'].includes(this.phase) || !Object.hasOwn(SIZE_LABELS, size)) return null;
     this.correct = size === this.current.size;
     this.phase = 'feedback';
     return {
@@ -228,7 +228,7 @@ function resizeFruit() {
 new ResizeObserver(resizeFruit).observe(stage);
 
 function setButtons() {
-  const enabled = (game.phase === 'ready' || questionNeedsTap) && imageReady && !questionPlaying && !document.hidden;
+  const enabled = (game.phase === 'question' || game.phase === 'ready') && imageReady && !document.hidden;
   for (const button of answers) button.disabled = !enabled;
 }
 
@@ -272,7 +272,7 @@ function showQuestion() {
     root.dataset.phase = 'question';
     resizeFruit();
     setButtons();
-    void playQuestion(undefined, true);
+    void playQuestion(true);
   };
   fruit.onload = loaded;
   fruit.onerror = () => {
@@ -323,13 +323,10 @@ async function playFeedback() {
 
 function answer(size) {
   if (!imageReady || document.hidden) return;
-  if (questionNeedsTap) {
-    // Use the answer tap to start audio, then apply this choice after the question.
-    void playQuestion(size);
-    return;
-  }
   const result = game.answer(size);
   if (!result) return;
+  if (questionPlaying) root.dataset.questionAudio = 'interrupted';
+  // Stop any question synchronously so the selected phrase starts in this tap.
   cancelPending();
   lastFeedback = result;
   answers.forEach(button => button.classList.toggle('selected', button.dataset.size === size));
@@ -338,7 +335,7 @@ function answer(size) {
   void playFeedback();
 }
 
-async function playQuestion(pendingSize, retryTransientFailure = false) {
+async function playQuestion(retryTransientFailure = false) {
   if (game.phase === 'feedback' || questionPlaying || !imageReady || document.hidden) return;
   cancelPending();
   const token = revision;
@@ -355,8 +352,8 @@ async function playQuestion(pendingSize, retryTransientFailure = false) {
   if (result !== 'ended') {
     recovering = 'question';
     questionNeedsTap = true;
-    // Browsers may require a user gesture. Both the picture and answer buttons
-    // can start the question; an answer is applied only after the question ends.
+    // The picture can retry a blocked question; answer buttons always start
+    // their selected phrase immediately, without waiting for question audio.
     stage.setAttribute('role', 'button');
     stage.setAttribute('tabindex', '0');
     stage.setAttribute('aria-label', '絵をタップして質問を聞く');
@@ -372,7 +369,6 @@ async function playQuestion(pendingSize, retryTransientFailure = false) {
     game.questionFinished();
     root.dataset.phase = 'ready';
     setButtons();
-    if (pendingSize) answer(pendingSize);
   }
 }
 
@@ -413,7 +409,7 @@ function resumePage() {
     pageSuspended = false;
     showQuestion();
   } else if (game.phase === 'question' && imageReady && !questionPlaying && !questionNeedsTap) {
-    void playQuestion(undefined, true);
+    void playQuestion(true);
   }
 }
 
